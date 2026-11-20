@@ -1,0 +1,8 @@
+{
+  "name": "specmill-dsh",
+  "private": true,
+  "description": "DeepSeek Harness runtime for specmill, pinned to a version every plugin in plugins/ accepts.",
+  "dependencies": {
+    "@deepseek-ai/dsh": "0.2.1-rc.5"
+  }
+}

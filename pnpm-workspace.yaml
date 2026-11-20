@@ -1,0 +1,15 @@
+packages:
+  - dsh
+  - plugins/*
+
+# Each package keeps its own lockfile and node_modules, so a plugin builds against the DSH versions it pins,
+# independent of the runtime version in dsh/ and of other plugins.
+sharedWorkspaceLockfile: false
+
+# Native modules DSH needs for subprocesses and terminals; the others' install scripts are not needed.
+allowBuilds:
+  '@deepseek-ai/dsh-subprocess-local': true
+  koffi: true
+  node-pty: true
+  '@google/genai': false
+  protobufjs: false

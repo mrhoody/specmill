@@ -1,0 +1,76 @@
+# @specmill/clean-reviewer bundle layer: the core plugin, which gives each dsh-superagent worker the review_changes tool,
+# and the agent preset each review runs under. The profile may set the reviewer's model; see the README.
+- insert:
+    - id: clean-reviewer
+      name: '@specmill/clean-reviewer'
+    # The agent preset of every review (REVIEWER_PRESET in src/review.ts). It starts with an empty conversation, reads the
+    # repository and the repository's agent instructions, and runs commands such as `git diff` and the tests. It cannot write
+    # or edit files, delegate, ask a person, browse, or schedule. Under a worker, dsh-superagent further restricts it to the
+    # worker's own tools and stops it when the ticket ends.
+    - id: preset-specmill-reviewer
+      name: '@deepseek-ai/dsh-agent-preset'
+      config:
+        id: specmill-reviewer
+        name: Clean reviewer
+        description: Independent review of a dsh-superagent worker's pull request, started by the review_changes tool. Not for manual selection.
+        order: 93
+        plugins:
+          - id: persona
+            name: '@deepseek-ai/dsh-persona'
+            config:
+              prefix: You are an independent code reviewer powered by the {{model}} model. You did not write the change you review, and you never modify it.
+          - id: agent-instructions
+            name: '@deepseek-ai/dsh-agent-instructions'
+            config:
+              maxBytes: 65536
+          - id: time-context
+            name: '@deepseek-ai/dsh-time-context'
+          # Long enough for a focused test run; the review as a whole is bounded by the plugin's timeoutMinutes.
+          - id: shell
+            name: cordis:group
+            group: true
+            isolate:
+              shell: true
+            config:
+              - id: bash-sandbox
+                name: '@deepseek-ai/dsh-bash-sandbox'
+                disabled: !!js process.platform === 'win32'
+                config:
+                  timeoutMs: 120000
+                  maxTimeoutMs: 600000
+              - id: pwsh-sandbox
+                name: '@deepseek-ai/dsh-pwsh-sandbox'
+                disabled: !!js process.platform !== 'win32'
+                config:
+                  timeoutMs: 120000
+                  maxTimeoutMs: 600000
+              - id: tool-bash
+                name: '@deepseek-ai/dsh-tool-bash'
+                disabled: !!js process.platform === 'win32'
+              - id: tool-pwsh
+                name: '@deepseek-ai/dsh-tool-pwsh'
+                disabled: !!js process.platform !== 'win32'
+          - id: tool-fs
+            name: '@deepseek-ai/dsh-tool-fs'
+            config:
+              write: false
+              edit: false
+          - id: tool-fs-search
+            name: '@deepseek-ai/dsh-tool-fs-search'
+            config:
+              sampleOverCapGlobResults: false
+          - id: compaction
+            name: cordis:group
+            group: true
+            isolate:
+              compaction: true
+              toolResultPruner: true
+            config:
+              - id: compaction-basic
+                name: '@deepseek-ai/dsh-compaction-basic'
+              - id: tool-result-pruner
+                name: '@deepseek-ai/dsh-compaction-tool-result-pruner'
+                config:
+                  thresholdChars: 8192
+                  headChars: 4096
+                  tailChars: 1024

@@ -7,7 +7,9 @@ specmill/
 ├── dsh/                  # the runtime: DSH pinned to a version every plugin accepts
 │   └── profiles/         # profile configuration templates
 └── plugins/              # one folder per DSH plugin, each with its own package.json and lockfile
-    └── dsh-superagent/   # deepseek-ai/dsh-superagent-prototype@8c32a9d, unmodified (MIT)
+    ├── dsh-superagent/   # deepseek-ai/dsh-superagent-prototype@8c32a9d, unmodified (MIT)
+    ├── spec-buddy/       # chat planning agent that hands specs to dsh-superagent
+    └── clean-reviewer/   # clean-context PR reviewer for dsh-superagent workers
 ```
 
 Each workspace package keeps its own lockfile and `node_modules` (`sharedWorkspaceLockfile: false`), so a plugin
@@ -39,6 +41,16 @@ dsh plugin --profile superagent add "link:$PWD/plugins/dsh-superagent"
 
 Then copy `dsh/profiles/superagent/cordis.patch.yml` to `~/.dsh/profiles/superagent/cordis.patch.yml` and fill in its
 placeholders.
+
+To give workers an independent reviewer that never sees their conversation, follow
+[plugins/clean-reviewer/README.md](plugins/clean-reviewer/README.md):
+
+```sh
+dsh plugin --profile superagent add "link:$PWD/plugins/clean-reviewer"
+```
+
+Then append [plugins/clean-reviewer/prompts/delivery-addition.md](plugins/clean-reviewer/prompts/delivery-addition.md)
+to the **Delivery requirements** team section in the dsh-superagent panel.
 
 For the chat planning agent, follow [plugins/spec-buddy/README.md](plugins/spec-buddy/README.md):
 

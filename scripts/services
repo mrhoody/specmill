@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+# Convenience wrapper: run one lifecycle action against both services, then exit with the worst result.
+# 0 all normal, 3 any waiting for setup, 2 any part error, 1 any stopped or broken.
+set -u
+
+action="${1:?usage: scripts/services start|stop|status}"
+case "$action" in
+  start) scripts=(plugins/dsh-superagent/scripts/dsh-superagent plugins/spec-buddy/scripts/spec-buddy) ;;
+  stop) scripts=(plugins/spec-buddy/scripts/spec-buddy plugins/dsh-superagent/scripts/dsh-superagent) ;;
+  status) scripts=(plugins/dsh-superagent/scripts/dsh-superagent plugins/spec-buddy/scripts/spec-buddy) ;;
+  *) echo "usage: scripts/services start|stop|status" >&2; exit 2 ;;
+esac
+
+worst=0
+for script in "${scripts[@]}"; do
+  echo "== $script $action"
+  python3 "$script" "$action"
+  code=$?
+  # Worst wins: 1 beats 3 beats 2, matching the per-service exit codes.
+  case "$code" in
+    1) worst=1 ;;
+    3) [ "$worst" -ne 1 ] && worst=3 ;;
+    2) [ "$worst" -eq 0 ] && worst=2 ;;
+  esac
+done
+exit "$worst"

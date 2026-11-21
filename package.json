@@ -6,8 +6,11 @@
     "node": "^22.19.0 || >=24.0.0"
   },
   "scripts": {
-    "build": "pnpm -r --filter ./plugins/* build",
-    "check": "pnpm -r --filter ./plugins/* check",
-    "dsh": "pnpm --filter specmill-dsh exec dsh"
+    "build": "pnpm -r --filter './plugins/*' build",
+    "check": "pnpm -r --filter './plugins/*' check",
+    "dsh": "pnpm --filter specmill-dsh exec dsh",
+    "start": "./scripts/services start",
+    "stop": "./scripts/services stop",
+    "status": "./scripts/services status"
   }
 }

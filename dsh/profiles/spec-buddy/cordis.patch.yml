@@ -1,0 +1,31 @@
+# Example profile configuration ($DSH_HOME/profiles/spec-buddy/cordis.patch.yml) for the `spec-buddy` profile.
+# Replace every <placeholder> before first start; see plugins/spec-buddy/README.md.
+# Keep this profile separate from `superagent`: dsh-superagent changes process-wide PATH and git settings, and each
+# service needs its own restarts.
+- id: webserver
+  config:
+    host: 127.0.0.1
+    port: 3083
+- id: spec-buddy
+  config:
+    stateDir: <absolute path, for example /home/me/.dsh/state/spec-buddy>
+    github:
+      # The repository whose issues Spec Buddy files and dsh-superagent reads.
+      repo: <owner/name>
+      # dsh-superagent's own GitHub login; the final line of every filed issue mentions it.
+      agentLogin: <dsh-superagent's GitHub login>
+      # The dedicated GH_CONFIG_DIR holding Spec Buddy's own machine-user login.
+      configDir: <absolute path, for example /home/me/.config/gh-spec-buddy>
+    # A read-only local clone of github.repo that Spec Buddy's Sessions read.
+    repoCheckout: <absolute path to the checkout>
+    # Optional; the profile's default model is used when omitted.
+    # model: <provider/model>
+- id: spec-buddy-slack
+  config:
+    # Slack app with Socket Mode enabled; bot scopes: app_mentions:read, chat:write, im:history, im:read, channels:history.
+    appToken: <xapp-...>
+    botToken: <xoxb-...>
+    # Channels to listen in, by Slack channel id. DMs use allowedUsers.
+    channels: [<channel id>]
+    # Slack user ids allowed to talk to Spec Buddy; empty means nobody.
+    allowedUsers: [<slack user id>]

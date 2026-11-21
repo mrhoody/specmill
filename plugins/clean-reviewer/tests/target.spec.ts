@@ -1,8 +1,8 @@
 /** What a review covers: the pushed head against its base, and the refusals that keep the reviewed commit the PR's. */
-import { writeFileSync } from 'node:fs'
+import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, beforeEach, expect, it } from 'vitest'
-import { NotReviewable, reviewTarget } from '../src/target.ts'
+import { NotReviewable, reviewCheckout, reviewTarget, run } from '../src/target.ts'
 import { fixture, git, runner, type Fixture } from './helpers.ts'
 
 let repo: Fixture
@@ -59,4 +59,45 @@ it('refuses a branch with nothing to review, and a base it cannot tell', async (
 
 it('refuses a directory that is not a git checkout', async () => {
   await expect(reviewTarget(repo.root, 10_000, runner())).rejects.toThrow(/not a git checkout/)
+})
+
+const openPr = (head: string, extra: Record<string, unknown> = {}) =>
+  ({ number: 7, url: 'u', baseRefName: 'main', headRefOid: head, state: 'OPEN', ...extra })
+
+it('refuses when gh fails for a reason other than the branch having no PR, and for a closed PR', async () => {
+  git(repo.work, 'remote', 'set-head', 'origin', 'main')
+  const failing: typeof run = (command, args, cwd, signal) =>
+    command === 'gh' ? Promise.reject(new Error('gh pr view failed: HTTP 401: Bad credentials')) : run(command, args, cwd, signal)
+  await expect(reviewTarget(repo.work, 10_000, failing)).rejects.toThrow(/Could not look up this branch's PR with gh.*Bad credentials/)
+  await expect(reviewTarget(repo.work, 10_000, runner(openPr(git(repo.work, 'rev-parse', 'HEAD'), { state: 'MERGED' }))))
+    .rejects.toThrow(/PR #7 for this branch is merged/)
+})
+
+it('diffs without the worker\'s colour or external diff settings', async () => {
+  git(repo.work, 'config', 'color.ui', 'always')
+  git(repo.work, 'config', 'diff.external', 'false')
+  const target = await reviewTarget(repo.work, 10_000, runner(openPr(git(repo.work, 'rev-parse', 'HEAD'))))
+  expect(target.diff).toContain('+export const add = (a: number, b: number) => a - b')
+  expect(target.diff).not.toContain('\x1b[')
+  expect(target.stat).not.toContain('\x1b[')
+})
+
+it('reports the fetch error when the base branch cannot be fetched and has no local copy', async () => {
+  const target = reviewTarget(repo.work, 10_000, runner(openPr(git(repo.work, 'rev-parse', 'HEAD'), { baseRefName: 'release/2.0' })))
+  await expect(target).rejects.toThrow(/Could not fetch origin\/release\/2.0 and there is no local copy of it/)
+})
+
+it('checks the head out into a separate detached worktree and removes it', async () => {
+  const head = git(repo.work, 'rev-parse', 'HEAD')
+  const checkout = await reviewCheckout(repo.work, head)
+  expect(checkout.path).not.toBe(repo.work)
+  expect(git(checkout.path, 'rev-parse', 'HEAD')).toBe(head)
+  expect(readFileSync(join(checkout.path, 'app.ts'), 'utf8')).toContain('a - b')
+  git(checkout.path, 'checkout', '--quiet', 'main')
+  writeFileSync(join(checkout.path, 'app.ts'), 'changed by the reviewer\n')
+  expect(git(repo.work, 'status', '--porcelain')).toBe('')
+  expect(git(repo.work, 'rev-parse', '--abbrev-ref', 'HEAD')).toBe('ticket')
+  await checkout.remove()
+  expect(existsSync(checkout.path)).toBe(false)
+  expect(git(repo.work, 'worktree', 'list')).not.toContain(checkout.path)
 })

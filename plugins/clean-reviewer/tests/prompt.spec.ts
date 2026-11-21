@@ -25,7 +25,21 @@ it('keeps the first message and the newest follow-ups within the limit', () => {
   const events = [userMessage('dsh-superagent', 'A'.repeat(50)), userMessage('dsh-superagent', 'old'.repeat(10)),
     userMessage('dsh-superagent', 'new'.repeat(10))]
   expect(requestText(events, 85)).toEqual({ messages: ['A'.repeat(50), 'new'.repeat(10)], omitted: 1 })
-  expect(requestText(events, 20).messages).toEqual(['A'.repeat(20)])
+  expect(requestText(events, 40).messages).toEqual([`${'A'.repeat(30)}\n[cut: this message showed 30 of 50 characters; read the rest from its source]`])
+})
+
+it('cuts a long first message with a marker, using the whole limit only when there are no follow-ups', () => {
+  const only = requestText([userMessage('dsh-superagent', 'A'.repeat(50))], 20)
+  expect(only).toEqual({ messages: [`${'A'.repeat(20)}\n[cut: this message showed 20 of 50 characters; read the rest from its source]`], omitted: 0 })
+  const withFollowUp = requestText([userMessage('dsh-superagent', 'A'.repeat(100)), userMessage('user', 'Use B instead')], 100)
+  expect(withFollowUp.messages).toEqual([expect.stringMatching(/^A{75}\n\[cut: this message showed 75 of 100/), 'Use B instead'])
+})
+
+it('leaves dsh-superagent status notices out of the request', () => {
+  const notice = { ...userMessage('dsh-superagent', 'Your background job build ended: exited.') } as unknown as { data: { source: object } }
+  notice.data = { ...notice.data, source: { kind: 'dsh-superagent', form: 'notice', summary: 'Background job ended' } }
+  const events = [userMessage('dsh-superagent', 'Assignment: fix add()'), notice as never, userMessage('dsh-superagent', 'Also keep the API stable')]
+  expect(requestText(events, 10_000).messages).toEqual(['Assignment: fix add()', 'Also keep the API stable'])
 })
 
 it('builds a prompt from the request, the change and the instructions only', () => {

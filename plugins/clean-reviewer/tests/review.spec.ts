@@ -1,4 +1,5 @@
 /** The review_changes tool: only on worker Sessions, no arguments, a fresh reviewer briefed by the plugin, and fail-closed refusals. */
+import { existsSync } from 'node:fs'
 import { afterEach, beforeEach, expect, it } from 'vitest'
 import { Config } from '../src/config.ts'
 import { decorate } from '../src/index.ts'
@@ -54,7 +55,11 @@ it('starts a fresh reviewer under the reviewer preset with a plugin-built brief 
   expect(fake.started).toHaveLength(1)
   const spec = fake.started[0]!
   expect(spec).toMatchObject({ provider: SPAWN_PROVIDER, delivery: 'caller',
-    request: { agentPreset: REVIEWER_PRESET, cwd: repo.work, parent: agent, agentOptions: { provider: 'deepseek', model: 'reviewer-model', reasoningEffort: 'high' } } })
+    request: { agentPreset: REVIEWER_PRESET, parent: agent, agentOptions: { provider: 'deepseek', model: 'reviewer-model', reasoningEffort: 'high' } } })
+  // The reviewer runs in a throwaway checkout of the head commit, removed once the review is done.
+  expect(spec.request.cwd).not.toBe(repo.work)
+  expect(existsSync(spec.request.cwd)).toBe(false)
+  expect(fake.disposed()).toBe(1)
   const brief = spec.request.prompt.map(block => block.text).join('\n')
   expect(brief).toContain('Assignment: make add() correct')
   expect(brief).toContain('+export const add = (a: number, b: number) => a - b')
@@ -108,5 +113,18 @@ it('stops the reviewer when the worker\'s call is cancelled', async () => {
   await new Promise(resolve => setTimeout(resolve, 0))
   controller.abort()
   expect(await pending).toMatchObject({ reviewed: false, reason: 'The review failed: stopped' })
+  expect(disposed).toBe(1)
+})
+
+it('stops the reviewer when the worker\'s call is cancelled while it is still starting', async () => {
+  const { agent } = fakeAgent('worker-t1', repo.work)
+  let disposed = 0
+  const controller = new AbortController()
+  let reject!: (error: Error) => void
+  const service: Subagents = { async startActivation() {
+    controller.abort()
+    return { childId: 'child-1', result: new Promise((_, no) => { reject = no }), dispose: async () => { disposed++; reject(new Error('stopped')) } }
+  } }
+  expect(await reviewChanges(agent, host(service), controller.signal)).toMatchObject({ reviewed: false, reason: 'The review failed: stopped' })
   expect(disposed).toBe(1)
 })

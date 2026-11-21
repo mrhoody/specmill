@@ -11,8 +11,8 @@ import { ticketOfSession } from './request.ts'
 import { reviewChanges, TOOL_DESCRIPTION, TOOL_NAME, type ReviewHost, type Subagents } from './review.ts'
 
 export const name = 'clean-reviewer'
-// Cordis only lets a plugin read services it injects; dsh-base always mounts `subagents` (@deepseek-ai/dsh-subagent).
-export const inject = ['tools', 'subagents']
+// Cordis only lets a plugin read services it injects; dsh-base always mounts `agents` and `subagents` (@deepseek-ai/dsh-subagent).
+export const inject = ['tools', 'agents', 'subagents']
 export { Config }
 
 export function apply(ctx: Context, config: Config): void {
@@ -22,6 +22,8 @@ export function apply(ctx: Context, config: Config): void {
   }
   const registrations = new Map<Agent, () => void>()
   ctx.on('agent/created', ({ agent }) => { decorate(agent, host, registrations); return undefined })
+  // Workers that were already loaded when this plugin started (added or reloaded while tickets run) get the tool too.
+  for (const agent of ctx.agents.list()) decorate(agent, host, registrations)
   ctx.on('agent/disposed', ({ agent }) => { registrations.get(agent)?.(); registrations.delete(agent) })
   ctx.effect(() => () => { for (const dispose of registrations.values()) dispose(); registrations.clear() })
   ctx.logger.info('clean-reviewer ready: dsh-superagent workers get %s', TOOL_NAME)

@@ -11,7 +11,8 @@ reviewer's only message itself, from three things:
   messages from people), plus anything a person typed into the worker Session. The worker's replies, tool calls and
   reasoning are never included.
 - **The change:** the diff of the pushed head commit against its merge base with the PR's base branch.
-- **The repository:** the reviewer reads it, including its agent instructions, and can run `git` and the tests.
+- **The repository:** the reviewer reads it, including its agent instructions, and can run `git` and the tests. It works
+  in a throwaway detached worktree of the head commit, so nothing it runs changes the worker's tree.
 
 The reviewer answers with structured findings (severity, file, line, summary, evidence). The worker assesses them as
 fallible input, the same way upstream treats automated reviewers: it fixes the valid ones and records what it did with
@@ -21,21 +22,24 @@ dsh-superagent and DSH are used unchanged.
 
 ## How it works
 
-- `src/index.ts`: on `agent/created`, registers `review_changes` in the agent's own scope for every Session named
-  `worker-<ticketId>`. Tools in an agent's own scope are not masked by dsh-superagent's worker tool allowlist. Other
+- `src/index.ts`: on `agent/created`, and for agents already loaded when the plugin starts, registers `review_changes`
+  in the agent's own scope for every Session named `worker-<ticketId>`. Tools in an agent's own scope are not masked by dsh-superagent's worker tool allowlist. Other
   Sessions, including a worker's subagents, don't get the tool.
 - `src/target.ts`: in the worker's directory (`session.header.cwd`), it refuses a dirty tree, a detached HEAD, a head that
   isn't pushed, and a head the open PR doesn't show yet. It takes the base from the PR (`gh pr view`), falling back to
-  `origin/HEAD`, fetches it, and diffs `merge-base..HEAD`. A diff over `maxDiffChars` is left for the reviewer to read
-  with `git diff`.
-- `src/request.ts`: reads `user/message` events whose source is `dsh-superagent` or `user`, keeping the first message
-  and the newest follow-ups within `maxRequestChars`.
+  `origin/HEAD` only when the branch has no PR, and refuses when `gh` fails otherwise or the PR is closed or merged. It
+  fetches the base and diffs `merge-base..HEAD` without colour, external diff tools or textconv. A diff over
+  `maxDiffChars` is left for the reviewer to read with `git diff`. `reviewCheckout` makes the detached worktree the
+  reviewer runs in, under the system temp directory, and removes it after the review.
+- `src/request.ts`: reads `user/message` events whose source is `dsh-superagent` or `user`, skipping dsh-superagent's
+  status notices, and keeps the first message and the newest follow-ups within `maxRequestChars`. A first message that
+  does not fit is cut with a marker, and keeps at most three quarters of the limit when there are follow-ups.
 - `src/review.ts`: starts the reviewer through DSH's subagent service (`ctx.subagents.startActivation`). It uses the
   `spawn` backend, which starts the child with an empty conversation, under the `specmill-reviewer` preset, with
-  `delivery: 'caller'` and an output schema. It waits for the result and stops the reviewer when the worker's call is
-  cancelled or `timeoutMinutes` passes.
+  `delivery: 'caller'` and an output schema. It waits for the result, stops the reviewer when the worker's call is
+  cancelled or `timeoutMinutes` passes, and disposes the activation once the result is settled.
 - `cordis.patch.yml`: the `specmill-reviewer` preset. It has read-only file tools, file search, a shell with a
-  2-minute default timeout, and the repository's agent instructions. It has no write or edit tools, no delegation, no
+  2-minute default timeout (which can write, hence the throwaway worktree), and the repository's agent instructions. It has no write or edit tools, no delegation, no
   web access and no questions to a person. Because the reviewer is a worker's child, dsh-superagent also limits it to
   the worker's tools and stops it when the ticket ends.
 
@@ -73,7 +77,7 @@ This plugin relies on these upstream details. Check them when bumping DSH or dsh
 | What | Where |
 | --- | --- |
 | Worker Sessions are named `worker-<ticketId>` | `plugins/dsh-superagent/src/executor/dsh.ts:24-26` |
-| Messages dsh-superagent delivers have `source.kind: 'dsh-superagent'` | `plugins/dsh-superagent/src/executor/dsh.ts:497` |
+| Messages dsh-superagent delivers have `source.kind: 'dsh-superagent'`; status notices have `source.form: 'notice'` | `plugins/dsh-superagent/src/app/delivery.ts:76-77` |
 | Tools in an agent's own scope are not masked by the worker allowlist | `plugins/dsh-superagent/src/app/sessions.ts:261-267,280-290` |
 | `ctx.subagents.startActivation` with `agentPreset`, `outputSchema`, `delivery: 'caller'` (DSH 0.2.1-rc.5) | `@deepseek-ai/dsh-subagent` `lib/types/types.d.ts` |
 | The `spawn` backend starts children with an empty conversation | `@deepseek-ai/dsh-subagent-spawn-in-process` README |

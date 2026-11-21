@@ -56,7 +56,8 @@ export function reviewPrompt(request: RequestText, target: ReviewTarget): string
     parts.push('No request text was found. Review for correctness, regressions and tests only, and say so in the summary.')
   }
   parts.push('## The change',
-    `Repository: ${target.cwd}`,
+    `Repository: ${target.cwd}, a separate checkout of the head commit made for this review and removed after it. `
+      + 'Dependencies and build output are not installed there; install them in it if a test run needs them.',
     `Branch ${target.branch}, head commit ${target.head}, base ${target.base} (merge base with origin/${target.baseBranch}).`,
     target.pr ? `Pull request #${target.pr.number}: ${target.pr.url}` : 'No pull request is open yet.',
     fence(target.stat || '(no file changes)'))

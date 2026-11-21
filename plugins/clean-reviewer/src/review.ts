@@ -5,8 +5,8 @@
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import { agentOptions, type Config } from './config.ts'
 import { OUTPUT_SCHEMA, parseReview, reviewPrompt } from './prompt.ts'
-import { requestText, ticketOfSession } from './request.ts'
-import { NotReviewable, reviewTarget, run, type Run } from './target.ts'
+import { requestText, ticketOfSession, type RequestText } from './request.ts'
+import { NotReviewable, reviewCheckout, reviewTarget, run, type ReviewTarget, type Run } from './target.ts'
 
 /** The agent preset each review runs under, declared in the bundle's `cordis.patch.yml`. */
 export const REVIEWER_PRESET = 'specmill-reviewer'
@@ -56,34 +56,51 @@ export async function reviewChanges(agent: Agent, host: ReviewHost, signal: Abor
   const cwd = agent.session.header.cwd
   if (!cwd) return { reviewed: false, reason: 'This Session has no working directory, so the change cannot be found.' }
 
-  let target
+  let target: ReviewTarget
   try { target = await reviewTarget(cwd, host.config.maxDiffChars, host.run ?? run, signal) }
   catch (error) {
     if (error instanceof NotReviewable) return { reviewed: false, reason: error.message }
     return { reviewed: false, reason: `Could not read the change: ${(error as Error).message}` }
   }
   const request = requestText(agent.session.snapshotEvents(), host.config.maxRequestChars)
-  const prompt = reviewPrompt(request, target)
 
+  let checkout
+  try { checkout = await reviewCheckout(cwd, target.head, host.run ?? run, signal) }
+  catch (error) { return { reviewed: false, reason: `Could not check out ${target.head.slice(0, 12)} for the reviewer: ${(error as Error).message}` } }
+  try { return await runReview(agent, host, subagents, signal, request, { ...target, cwd: checkout.path }) }
+  finally { await checkout.remove() }
+}
+
+/** Starts the reviewer in the review checkout `target.cwd`, waits for its answer, and always releases it. */
+async function runReview(agent: Agent, host: ReviewHost, subagents: Subagents, signal: AbortSignal, request: RequestText, target: ReviewTarget,
+): Promise<Record<string, unknown>> {
   const limit = AbortSignal.any([signal, AbortSignal.timeout(host.config.timeoutMinutes * 60_000)])
   const options = agentOptions(host.config)
   let activation
   try {
     activation = await subagents.startActivation({ provider: SPAWN_PROVIDER, label: `Clean review of ${target.head.slice(0, 12)}`,
       signal: limit, delivery: 'caller',
-      request: { prompt: [{ type: 'text', text: prompt }], parent: agent, cwd, agentPreset: REVIEWER_PRESET, outputSchema: OUTPUT_SCHEMA,
-        ...options ? { agentOptions: options } : {} } })
+      request: { prompt: [{ type: 'text', text: reviewPrompt(request, target) }], parent: agent, cwd: target.cwd, agentPreset: REVIEWER_PRESET,
+        outputSchema: OUTPUT_SCHEMA, ...options ? { agentOptions: options } : {} } })
   } catch (error) {
     return { reviewed: false, reason: `The reviewer could not start: ${(error as Error).message}` }
   }
-  const stop = () => { void activation.dispose().catch(() => undefined) }
+  // The caller owns the activation once it starts: dispose stops a running reviewer and releases a finished one.
+  let released: Promise<void> | undefined
+  const release = () => (released ??= activation.dispose().catch(() => undefined))
+  const stop = () => { void release() }
   limit.addEventListener('abort', stop, { once: true })
+  // An abort during startActivation fired before the listener existed.
+  if (limit.aborted) stop()
   let result: SubagentResult
   try { result = await activation.result }
   catch (error) {
     return { reviewed: false, reason: limit.aborted && !signal.aborted
       ? `The review did not finish within ${host.config.timeoutMinutes} minutes.` : `The review failed: ${(error as Error).message}` }
-  } finally { limit.removeEventListener('abort', stop) }
+  } finally {
+    limit.removeEventListener('abort', stop)
+    await release()
+  }
 
   const base = { reviewed_head: target.head, base: target.base, base_branch: target.baseBranch, ...target.pr ? { pr: target.pr } : {},
     reviewer_session: activation.childId, ...target.notes.length ? { notes: target.notes } : {} }

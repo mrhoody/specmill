@@ -4,9 +4,10 @@
     - id: clean-reviewer
       name: '@specmill/clean-reviewer'
     # The agent preset of every review (REVIEWER_PRESET in src/review.ts). It starts with an empty conversation, reads the
-    # repository and the repository's agent instructions, and runs commands such as `git diff` and the tests. It cannot write
-    # or edit files, delegate, ask a person, browse, or schedule. Under a worker, dsh-superagent further restricts it to the
-    # worker's own tools and stops it when the ticket ends.
+    # repository and the repository's agent instructions, and runs commands such as `git diff` and the tests. Its file tools
+    # cannot write or edit, and it cannot delegate, ask a person, browse, or schedule. Its shell can write, so each review
+    # runs in a throwaway detached worktree of the head commit (src/target.ts reviewCheckout), never in the worker's tree.
+    # Under a worker, dsh-superagent further restricts it to the worker's own tools and stops it when the ticket ends.
     - id: preset-specmill-reviewer
       name: '@deepseek-ai/dsh-agent-preset'
       config:

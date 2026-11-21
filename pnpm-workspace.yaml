@@ -13,3 +13,8 @@ allowBuilds:
   node-pty: true
   '@google/genai': false
   protobufjs: false
+
+# Spec Buddy pins the Slack client that supports the grouped v8 methods; these are newer than the release-age policy.
+minimumReleaseAgeExclude:
+  - '@slack/types@3.3.1'
+  - '@slack/web-api@8.5.0'

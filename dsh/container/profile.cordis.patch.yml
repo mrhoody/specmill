@@ -1,0 +1,16 @@
+# The container's superagent profile (copied over the template's patch at build time).
+# The panel stays on loopback, which dsh-superagent's management API requires; entrypoint.sh forwards the container's
+# bridge address to it, and run.sh publishes that only on the host's 127.0.0.1.
+- id: webserver
+  config:
+    host: 127.0.0.1
+    port: 3082
+- id: dsh-superagent
+  config:
+    stateDir: /home/agent/.dsh/state/superagent
+# The model comes from the template default: provider deepseek-official, model deepseek-flash, key in $DEEPSEEK_API_KEY.
+# The clean reviewer uses the worker's model unless set here.
+# - id: clean-reviewer
+#   config:
+#     model: deepseek-official/deepseek-v4-pro
+#     reasoningEffort: high

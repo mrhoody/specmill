@@ -5,6 +5,7 @@ An always-on engineering agent built on [DeepSeek Harness](https://github.com/de
 ```
 specmill/
 ├── dsh/                  # the runtime: DSH pinned to a version every plugin accepts
+│   ├── container/        # deployment: the Specmill container and the VM bootstrap script
 │   └── profiles/         # profile configuration templates
 └── plugins/              # one folder per DSH plugin, each with its own package.json and lockfile
     ├── dsh-superagent/   # deepseek-ai/dsh-superagent-prototype@8c32a9d, unmodified (MIT)
@@ -24,6 +25,9 @@ pnpm dsh --version
 ```
 
 ## Run
+
+This section sets Specmill up in your own DSH home, on your own machine. To run it as a service, see
+[Deploy](#deploy).
 
 DSH loads plugins into a profile. Each service gets its own profile, because they restart independently and
 dsh-superagent changes process-wide `PATH` and git settings.
@@ -69,6 +73,38 @@ plugins/spec-buddy/scripts/spec-buddy start           # planning agent, port 308
 
 `pnpm start`, `pnpm stop`, and `pnpm status` call both service scripts in turn. The hourly check for each service is
 described in their READMEs.
+
+## Deploy
+
+The suggested way to deploy Specmill is a container on a VM. [dsh/container/](dsh/container/README.md) packages
+the pinned runtime and Specmill's plugins as one Docker container. Its `bootstrap-vm.sh` prepares a fresh Ubuntu
+24.04 or Debian 12 VM to run it:
+- hardened SSH;
+- a firewall that allows only SSH;
+- rootless Docker for an unprivileged user.
+
+The service is reached only through an SSH tunnel. Everything the agent does stays inside the container, away
+from your own environment and credentials.
+
+1. Create the VM, then bootstrap it as its admin user:
+
+   ```sh
+   curl -fsSLO https://raw.githubusercontent.com/mrhoody/specmill/main/dsh/container/bootstrap-vm.sh
+   sudo bash bootstrap-vm.sh
+   ```
+
+2. Start Specmill as the `dsh` user, with the panel tunnelled to your machine:
+
+   ```sh
+   ssh -L 3082:127.0.0.1:3082 dsh@<vm>
+   export DEEPSEEK_API_KEY=...  AGENT_GH_TOKEN=...  SUPERAGENT_REPO=owner/name
+   DETACH=1 ~/specmill/dsh/container/run.sh
+   ```
+
+The container currently deploys the `superagent` profile, which runs dsh-superagent with clean-reviewer; spec-buddy is
+not included yet. The same container also runs locally (`dsh/container/run.sh`) for a trial.
+[dsh/container/README.md](dsh/container/README.md) explains what each step changes, what the secrets must be, and the
+settings to save in the panel after the first start.
 
 ## Adding a plugin
 

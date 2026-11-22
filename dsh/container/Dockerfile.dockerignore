@@ -1,0 +1,6 @@
+# Build context is the repository root; only what the Dockerfile copies is needed.
+**/node_modules
+**/lib
+**/.artifacts
+**/.pnpm-store
+.git
